@@ -1,119 +1,106 @@
-import os, sqlite3
+import os
+import json
+import psycopg2
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
-DB_FILE = os.path.join(os.getcwd(), "performance.db")
+# -----------------------------
+# Database connection setup
+# -----------------------------
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ------------------------------------------------------------
-# DATABASE SETUP
-# ------------------------------------------------------------
+def get_connection():
+    return psycopg2.connect(DATABASE_URL)
+
 def init_db():
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS performance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            learner_id TEXT,
-            domain TEXT,
-            lesson INTEGER,
-            points REAL,
-            max_points REAL,
-            cycle INTEGER,
-            date TEXT
-        )
-        """)
+    """Create table if not exists."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS scores (
+            id SERIAL PRIMARY KEY,
+            learner_id VARCHAR(100),
+            domain VARCHAR(50),
+            lesson VARCHAR(100),
+            score FLOAT,
+            date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
     print("✅ Database initialized")
 
-init_db()
-
-# ------------------------------------------------------------
-# ROUTES
-# ------------------------------------------------------------
+# -----------------------------
+# Routes
+# -----------------------------
 @app.route("/")
 def home():
-    return jsonify({"status": "✅ Domain Performance Engine running"})
+    return jsonify({"status": "✅ Performance Engine Running"})
 
-# ---------- Insert or update learner domain score ----------
-@app.route("/update_scores", methods=["POST"])
-def update_scores():
-    data = request.get_json(force=True)
-    required = ["learner_id", "domain", "lesson", "points", "max_points", "cycle"]
+@app.route("/update_score", methods=["POST"])
+def update_score():
+    try:
+        data = request.get_json()
+        learner_id = data.get("learner_id")
+        domain = data.get("domain")
+        lesson = data.get("lesson")
+        score = float(data.get("score", 0))
 
-    if not all(k in data for k in required):
-        return jsonify({"error": "Missing fields"}), 400
+        if not learner_id or not domain or not lesson:
+            return jsonify({"error": "Missing required fields"}), 400
 
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("""
-            INSERT INTO performance (learner_id, domain, lesson, points, max_points, cycle, date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            data["learner_id"], data["domain"], data["lesson"],
-            data["points"], data["max_points"], data["cycle"],
-            datetime.now().strftime("%Y-%m-%d")
-        ))
-        conn.commit()
-    return jsonify({"message": "✅ Score recorded successfully"})
-
-# ---------- Retrieve learner full score history ----------
-@app.route("/get_scores")
-def get_scores():
-    learner_id = request.args.get("learner_id")
-    if not learner_id:
-        return jsonify({"error": "Missing learner_id"}), 400
-
-    with sqlite3.connect(DB_FILE) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM performance WHERE learner_id = ?", (learner_id,))
-        rows = cur.fetchall()
-
-    data = [
-        {
-            "id": r[0],
-            "learner_id": r[1],
-            "domain": r[2],
-            "lesson": r[3],
-            "points": r[4],
-            "max_points": r[5],
-            "cycle": r[6],
-            "date": r[7]
-        } for r in rows
-    ]
-    return jsonify(data)
-
-# ---------- Generate summary / averages per domain ----------
-@app.route("/summary")
-def summary():
-    learner_id = request.args.get("learner_id")
-    if not learner_id:
-        return jsonify({"error": "Missing learner_id"}), 400
-
-    with sqlite3.connect(DB_FILE) as conn:
+        conn = get_connection()
         cur = conn.cursor()
         cur.execute("""
-            SELECT domain, SUM(points), SUM(max_points)
-            FROM performance
-            WHERE learner_id = ?
-            GROUP BY domain
-        """, (learner_id,))
-        results = cur.fetchall()
+            INSERT INTO scores (learner_id, domain, lesson, score)
+            VALUES (%s, %s, %s, %s);
+        """, (learner_id, domain, lesson, score))
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    summary = []
-    for r in results:
-        domain, pts, max_pts = r
-        pct = round((pts / max_pts) * 100, 1) if max_pts else 0
-        summary.append({"domain": domain, "score": pct})
+        return jsonify({"message": "✅ Score updated successfully"})
+    except Exception as e:
+        print("Error:", e)
+        return jsonify({"error": str(e)}), 500
 
-    return jsonify({
-        "learner_id": learner_id,
-        "summary": summary,
-        "date": datetime.now().strftime("%Y-%m-%d")
-    })
+@app.route("/get_scores", methods=["GET"])
+def get_scores():
+    try:
+        learner_id = request.args.get("learner_id")
+        conn = get_connection()
+        cur = conn.cursor()
+        if learner_id:
+            cur.execute("SELECT * FROM scores WHERE learner_id = %s;", (learner_id,))
+        else:
+            cur.execute("SELECT * FROM scores;")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
 
-# ------------------------------------------------------------
-# ENTRY POINT
-# ------------------------------------------------------------
+        results = [
+            {
+                "id": r[0],
+                "learner_id": r[1],
+                "domain": r[2],
+                "lesson": r[3],
+                "score": r[4],
+                "date": r[5].strftime("%Y-%m-%d %H:%M")
+            }
+            for r in rows
+        ]
+        return jsonify(results)
+    except Exception as e:
+        print("Error:", e)
+        return jsonify({"error": str(e)}), 500
+
+# -----------------------------
+# Entry Point
+# -----------------------------
 if __name__ == "__main__":
+    init_db()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
