@@ -12,7 +12,6 @@ CORS(app)
 # -----------------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Compatibility fix for psycopg2
 if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgres://", 1)
 
@@ -37,6 +36,13 @@ def init_db():
     cur.close()
     conn.close()
     print("✅ Database initialized")
+
+# ✅ Make sure table is created even when Gunicorn runs
+with app.app_context():
+    try:
+        init_db()
+    except Exception as e:
+        print("⚠️ DB Init Error:", e)
 
 # -----------------------------
 # Routes
@@ -101,10 +107,3 @@ def get_scores():
     except Exception as e:
         print("Error:", e)
         return jsonify({"error": str(e)}), 500
-
-# -----------------------------
-# Entry Point
-# -----------------------------
-if __name__ == "__main__":
-    init_db()
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
