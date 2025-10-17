@@ -12,6 +12,10 @@ CORS(app)
 # -----------------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Compatibility fix for psycopg2
+if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgres://", 1)
+
 def get_connection():
     return psycopg2.connect(DATABASE_URL)
 
