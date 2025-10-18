@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Performance Engine — Domain Rubric Generator</title>
+  <title>Performance Engine — Teacher Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: #f5f5f7;
       color: #1d1d1f;
-      margin: 0;
       padding: 40px;
     }
     .card {
@@ -18,213 +17,174 @@
       border-radius: 24px;
       box-shadow: 0 6px 24px rgba(0,0,0,0.08);
       padding: 32px;
-      max-width: 1000px;
+      max-width: 960px;
       margin: 0 auto;
+    }
+    .btn-primary {
+      background: #0071e3;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 600;
+      transition: 0.2s;
+    }
+    .btn-primary:hover {
+      background: #0077ed;
     }
     table {
       border-collapse: collapse;
       width: 100%;
-      margin-top: 12px;
+      margin-top: 20px;
       font-size: 14px;
     }
     th, td {
-      border: 1px solid #e5e5e5;
-      padding: 8px 10px;
+      border-bottom: 1px solid #e5e5e5;
+      padding: 10px 8px;
       text-align: left;
     }
     th {
-      background-color: #f9fafb;
+      background: #fafafa;
       font-weight: 600;
     }
-    .lesson-card {
-      background: #fff;
+    .input-field {
+      border: 1px solid #e0e0e0;
       border-radius: 12px;
-      box-shadow: 0 3px 12px rgba(0,0,0,0.05);
-      margin-top: 20px;
-      overflow: hidden;
+      padding: 10px;
+      width: 100%;
+      background-color: #fafafa;
+      transition: border-color 0.2s;
     }
-    .lesson-header {
-      cursor: pointer;
-      background: #eff6ff;
-      padding: 16px 20px;
-      font-weight: 600;
-      font-size: 1.1rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    .input-field:focus {
+      outline: none;
+      border-color: #0071e3;
+      background-color: white;
     }
-    .lesson-header:hover { background: #dbeafe; }
-    .lesson-body {
-      display: none;
-      padding: 20px;
-    }
-    .rotate { transform: rotate(90deg); transition: transform 0.2s; }
-    .rotate.open { transform: rotate(270deg); }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1 class="text-3xl font-bold text-center mb-8">Performance Engine — Quantitative Rubric Generator</h1>
+    <h1 class="text-3xl font-bold text-center mb-8">Performance Engine Dashboard</h1>
 
-    <div class="space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label class="block font-semibold mb-1">Select Stream</label>
-        <select id="stream" class="w-full border rounded-md p-2">
-          <option value="SEL">SEL (School of English Language)</option>
-          <option value="AW">AW (Academic Wing)</option>
+        <label class="font-semibold">Learner ID</label>
+        <input id="learner_id" type="text" placeholder="e.g., 461033" class="input-field">
+      </div>
+
+      <div>
+        <label class="font-semibold">Lesson</label>
+        <input id="lesson" type="text" placeholder="e.g., Lesson 2 — Polite Introductions" class="input-field">
+      </div>
+
+      <div>
+        <label class="font-semibold">Domain</label>
+        <select id="domain" class="input-field">
+          <option value="Understanding">Understanding</option>
+          <option value="Application">Application</option>
+          <option value="Communication">Communication</option>
+          <option value="Behavior">Behavior</option>
         </select>
       </div>
 
       <div>
-        <label class="block font-semibold mb-1">Upload Book Scope (.pdf / .docx / .txt)</label>
-        <input id="fileInput" type="file" accept=".pdf,.docx,.txt" class="w-full border rounded-md p-2">
+        <label class="font-semibold">Score (0–100)</label>
+        <input id="score" type="number" min="0" max="100" class="input-field">
       </div>
-
-      <button id="generateBtn" class="w-full bg-blue-600 text-white font-semibold p-3 rounded-lg hover:bg-blue-700 transition">
-        Generate Lesson Rubrics
-      </button>
-
-      <div id="status" class="text-center text-sm mt-3"></div>
     </div>
 
-    <div id="output" class="hidden mt-10">
-      <h2 id="lessonTitle" class="text-2xl font-semibold mb-4"></h2>
-      <div id="rubricContainer"></div>
+    <div class="text-center mt-6">
+      <button id="submitBtn" class="btn-primary">Submit Score</button>
+    </div>
+
+    <p id="status" class="text-center text-sm mt-3"></p>
+
+    <hr class="my-8">
+
+    <h2 class="text-2xl font-semibold mb-4">Learner Performance Records</h2>
+    <div id="scoresTableContainer" class="overflow-x-auto">
+      <table id="scoresTable">
+        <thead>
+          <tr>
+            <th>Learner ID</th>
+            <th>Domain</th>
+            <th>Lesson</th>
+            <th>Score</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
 
   <script>
-    const backendURL = "https://performanceengine-production.up.railway.app/generate";
+    const backendURL = "https://performanceengine-production.up.railway.app";
     const status = document.getElementById("status");
-    const output = document.getElementById("output");
-    const lessonTitle = document.getElementById("lessonTitle");
-    const rubricContainer = document.getElementById("rubricContainer");
+    const tableBody = document.querySelector("#scoresTable tbody");
 
-    document.getElementById("generateBtn").addEventListener("click", async () => {
-      const file = document.getElementById("fileInput").files[0];
-      const stream = document.getElementById("stream").value;
-      if (!file) return (status.textContent = "⚠️ Please upload a Book Scope file first.");
+    document.getElementById("submitBtn").addEventListener("click", async () => {
+      const learner_id = document.getElementById("learner_id").value.trim();
+      const domain = document.getElementById("domain").value;
+      const lesson = document.getElementById("lesson").value.trim();
+      const score = document.getElementById("score").value.trim();
 
-      const form = new FormData();
-      form.append("file", file);
-      form.append("stream", stream);
-
-      status.textContent = "⏳ Processing lessons 1–4...";
-      output.classList.add("hidden");
-      rubricContainer.innerHTML = "";
+      if (!learner_id || !domain || !lesson || !score) {
+        status.textContent = "⚠️ Please fill in all fields.";
+        status.style.color = "red";
+        return;
+      }
 
       try {
-        const res = await fetch(backendURL, { method: "POST", body: form });
-        if (!res.ok) throw new Error(`Server error: ${res.status}`);
-        const data = await res.json();
-
-        if (!data.lessons || !Array.isArray(data.lessons)) throw new Error("Invalid backend response.");
-
-        lessonTitle.textContent = `Book Scope Rubrics (${data.stream})`;
-
-        data.lessons.forEach((lesson) => {
-          const lessonCard = document.createElement("div");
-          lessonCard.className = "lesson-card";
-
-          const header = document.createElement("div");
-          header.className = "lesson-header";
-          header.innerHTML = `
-            <span>Lesson ${lesson.lesson_number}: ${lesson.lesson_title}</span>
-            <span class="rotate">▶</span>
-          `;
-          header.addEventListener("click", () => {
-            const body = lessonCard.querySelector(".lesson-body");
-            const arrow = header.querySelector(".rotate");
-            const visible = body.style.display === "block";
-            body.style.display = visible ? "none" : "block";
-            arrow.classList.toggle("open", !visible);
-          });
-
-          const body = document.createElement("div");
-          body.className = "lesson-body";
-          body.innerHTML = `
-            ${renderRubric(lesson.rubric_overview)}
-            ${renderTasks(lesson.task_matrix)}
-            ${renderScoring(lesson.scoring_system)}
-          `;
-
-          lessonCard.appendChild(header);
-          lessonCard.appendChild(body);
-          rubricContainer.appendChild(lessonCard);
+        const res = await fetch(`${backendURL}/update_score`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ learner_id, domain, lesson, score })
         });
 
-        status.textContent = "✅ Rubrics generated successfully!";
-        output.classList.remove("hidden");
-        output.scrollIntoView({ behavior: "smooth" });
+        const data = await res.json();
+        if (res.ok) {
+          status.textContent = "✅ Score saved successfully!";
+          status.style.color = "green";
+          fetchScores(); // refresh table
+        } else {
+          status.textContent = "❌ " + (data.error || "Failed to save.");
+          status.style.color = "red";
+        }
       } catch (err) {
         console.error(err);
-        status.textContent = "❌ " + err.message;
+        status.textContent = "❌ Connection error.";
+        status.style.color = "red";
       }
     });
 
-    function renderRubric(rubric) {
-      if (!rubric || rubric.length === 0) return "<p>No rubric data found.</p>";
+    async function fetchScores() {
+      tableBody.innerHTML = "<tr><td colspan='5' class='text-center py-3'>Loading...</td></tr>";
+      try {
+        const res = await fetch(`${backendURL}/get_scores`);
+        const data = await res.json();
 
-      let html = `<h3 class="rubric-title">Domain Overview</h3>`;
-      html += `<table><thead><tr>
-        <th>Domain</th><th>Areas</th><th>Tasks</th>
-        <th>Pts/Task</th><th>Domain Max</th><th>Weight%</th><th>Description</th>
-      </tr></thead><tbody>`;
+        if (!Array.isArray(data)) throw new Error("Invalid data");
+        if (data.length === 0) {
+          tableBody.innerHTML = "<tr><td colspan='5' class='text-center py-3 text-gray-500'>No scores yet</td></tr>";
+          return;
+        }
 
-      rubric.forEach(r => {
-        html += `<tr>
-          <td>${r.domain}</td>
-          <td>${Array.isArray(r.areas) ? r.areas.join(", ") : r.areas}</td>
-          <td>${r.tasks}</td>
-          <td>${r.points_per_task}</td>
-          <td>${r.domain_max}</td>
-          <td>${r.weight}</td>
-          <td>${r.description}</td>
-        </tr>`;
-      });
-
-      html += `</tbody></table>`;
-      return html;
+        tableBody.innerHTML = data.map(row => `
+          <tr>
+            <td>${row.learner_id}</td>
+            <td>${row.domain}</td>
+            <td>${row.lesson}</td>
+            <td class="font-semibold">${row.score}</td>
+            <td>${row.date}</td>
+          </tr>
+        `).join("");
+      } catch (err) {
+        console.error(err);
+        tableBody.innerHTML = "<tr><td colspan='5' class='text-center py-3 text-red-500'>Failed to load scores</td></tr>";
+      }
     }
 
-    function renderTasks(matrix) {
-      if (!matrix) return "";
-      let html = `<h3 class="rubric-title mt-6">Task Matrix</h3>`;
-      for (const [domain, tasks] of Object.entries(matrix)) {
-        html += `<h4 class="mt-3 font-semibold">${domain}</h4><ul class="list-disc ml-5 text-sm">`;
-        tasks.forEach(t => {
-          const desc = t.question || t.task || t.observation || "";
-          const area = t.area ? `<strong>${t.area}:</strong> ` : "";
-          html += `<li>${area}${desc}</li>`;
-        });
-        html += `</ul>`;
-      }
-      return html;
-    }
-
-    function renderScoring(scoring) {
-      if (!scoring) return "";
-      let html = `<h3 class="rubric-title mt-6">Scoring System</h3>`;
-      html += `<p><strong>Total Points:</strong> ${scoring.total_points}</p>`;
-
-      if (scoring.weights) {
-        html += `<p class="mt-1"><strong>Weights:</strong> `;
-        html += Object.entries(scoring.weights)
-          .map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`)
-          .join(", ");
-        html += `</p>`;
-      }
-
-      if (scoring.bands) {
-        html += `<table class="mt-2"><thead><tr><th>Range</th><th>Band</th></tr></thead><tbody>`;
-        scoring.bands.forEach(b => {
-          html += `<tr><td>${b.range}</td><td>${b.label}</td></tr>`;
-        });
-        html += `</tbody></table>`;
-      }
-
-      return html;
-    }
+    fetchScores();
   </script>
 </body>
 </html>
